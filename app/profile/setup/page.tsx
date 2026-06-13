@@ -32,8 +32,7 @@ export default function ProfileSetupPage() {
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    router.push("/tutorial");
   }
 
   return (
