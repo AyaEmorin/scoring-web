@@ -1,3 +1,8 @@
-name = "scoring-web"
+name = "scoring-web-1135"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+main = ".open-next/cloudflare/_worker.js"
+
+[assets]
+directory = ".open-next/cloudflare/assets"
+binding = "ASSETS"
