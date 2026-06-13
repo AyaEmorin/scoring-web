@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
+  try {
   const { code } = await request.json() as { code: string };
 
   if (!code?.trim()) {
@@ -11,11 +12,15 @@ export async function POST(request: NextRequest) {
 
   // ค้นหา email จากรหัสลับ (ผ่าน admin client เพื่อข้าม RLS)
   const admin = getAdminClient();
-  const { data: raterRaw } = await admin
+  const { data: raterRaw, error: dbError } = await admin
     .from("rater_codes")
     .select("email, rater_name")
     .eq("code", code.trim().toUpperCase())
     .single();
+
+  if (dbError) {
+    return NextResponse.json({ error: `DB error: ${dbError.message}` }, { status: 500 });
+  }
 
   const rater = raterRaw as { email: string; rater_name: string } | null;
 
@@ -56,4 +61,8 @@ export async function POST(request: NextRequest) {
   }
 
   return response;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Server error: ${msg}` }, { status: 500 });
+  }
 }
