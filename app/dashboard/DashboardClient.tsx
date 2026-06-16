@@ -218,7 +218,7 @@ export default function DashboardClient({ overall, perItem, alpha, raterSummary 
         )}
 
         {/* Tab: สถิติรวม */}
-        {tab === "stats" && <StatsPanel overall={overall} alpha={alpha} />}
+        {tab === "stats" && <StatsPanel overall={overall} alpha={alpha} raterSummary={raterSummary} />}
       </main>
     </div>
   );
