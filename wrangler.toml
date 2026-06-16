@@ -1,4 +1,4 @@
-name = "scoring-web-1135"
+name = "scoring-web"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 main = ".open-next/worker.js"
