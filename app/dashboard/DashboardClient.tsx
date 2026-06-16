@@ -26,6 +26,15 @@ interface Alpha {
   fluency: number | null;
 }
 
+interface RawScore {
+  rater_id: string;
+  item_id: number;
+  completeness: number | null;
+  correctness: number | null;
+  fluency: number | null;
+  comment: string | null;
+}
+
 interface RaterSummary {
   user_id: string;
   name: string;
@@ -41,6 +50,7 @@ interface Props {
   perItem: PerItemStat[];
   alpha: Alpha;
   raterSummary: RaterSummary[];
+  rawScores: RawScore[];
 }
 
 const SD_HIGH_THRESHOLD = 1.2;
@@ -75,7 +85,7 @@ function alphaInterp(a: number | null): string {
 
 type Tab = "raters" | "items" | "stats";
 
-export default function DashboardClient({ overall, perItem, alpha, raterSummary }: Props) {
+export default function DashboardClient({ overall, perItem, alpha, raterSummary, rawScores }: Props) {
   const [tab, setTab] = useState<Tab>("raters");
   const [sortBy, setSortBy] = useState<"id" | "sd">("id");
 
@@ -188,6 +198,41 @@ export default function DashboardClient({ overall, perItem, alpha, raterSummary 
     a.click();
   }, [rows, alpha, raterSummary]);
 
+  const exportRawJSON = useCallback(() => {
+    const raterMap = new Map(raterSummary.map((r) => [r.user_id, { name: r.name, position: r.position }]));
+    const scores = rawScores
+      .filter((s) => s.completeness !== null || s.correctness !== null || s.fluency !== null)
+      .sort((a, b) => a.item_id - b.item_id)
+      .map((s) => ({
+        item_id: s.item_id,
+        rater_name: raterMap.get(s.rater_id)?.name ?? s.rater_id,
+        rater_position: raterMap.get(s.rater_id)?.position ?? "",
+        completeness: s.completeness,
+        correctness: s.correctness,
+        fluency: s.fluency,
+        comment: s.comment ?? null,
+      }));
+
+    const output = {
+      metadata: {
+        title: "คะแนนรายข้อ-รายคน (Human Evaluation)",
+        export_date: new Date().toISOString().slice(0, 10),
+        num_raters: raterSummary.length,
+        num_items: 100,
+        rating_scale: "1–5",
+        dimensions: DIMENSIONS.map((d) => ({ key: d, label: RUBRIC[d].label })),
+        note: "หนึ่งแถวต่อหนึ่งคู่ (ผู้ให้คะแนน × ข้อ) เหมาะสำหรับ scatter plot / distribution analysis",
+      },
+      scores,
+    };
+
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `eval_raw_scores_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  }, [rawScores, raterSummary]);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "raters", label: "ผู้ให้คะแนน" },
     { key: "items", label: "รายข้อ" },
@@ -204,6 +249,7 @@ export default function DashboardClient({ overall, perItem, alpha, raterSummary 
           </div>
           <div className="flex gap-2">
             <button onClick={exportCSV} className="text-sm border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">Export CSV</button>
+            <button onClick={exportRawJSON} className="text-sm border border-blue-300 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50">Export รายข้อ-รายคน</button>
             <button onClick={exportAI} className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">Export สำหรับ AI</button>
           </div>
         </div>

@@ -13,6 +13,7 @@ interface RawScore {
   completeness: number | null;
   correctness: number | null;
   fluency: number | null;
+  comment: string | null;
 }
 
 interface Profile {
@@ -45,7 +46,7 @@ export default async function DashboardPage() {
     { data: { users: authUsers } },
   ] = await Promise.all([
     admin.from("profiles").select("user_id, first_name, last_name, position"),
-    admin.from("scores").select("rater_id, item_id, completeness, correctness, fluency"),
+    admin.from("scores").select("rater_id, item_id, completeness, correctness, fluency, comment"),
     admin.rpc("overall_stats"),
     admin.rpc("item_stats"),
     admin.from("rater_codes").select("email").eq("is_admin", false),
@@ -107,6 +108,7 @@ export default async function DashboardPage() {
       perItem={perItem ?? []}
       alpha={alpha}
       raterSummary={raterSummary}
+      rawScores={allScores}
     />
   );
 }

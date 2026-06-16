@@ -44,8 +44,8 @@ Three distinct clients — use the correct one for each context:
 ### Auth & Access Control Flow
 
 1. Middleware ([middleware.ts](middleware.ts)) guards `/`, `/score`, `/dashboard`, `/profile`, `/tutorial` — redirects to `/login` if unauthenticated.
-2. After login via magic link, `requireProfile()` ([lib/requireProfile.ts](lib/requireProfile.ts)) redirects to `/profile/setup` if the user hasn't filled in their profile yet.
-3. Admin vs. rater role is determined by `rater_codes.is_admin` in Supabase (checked via admin client in `lib/getAdminStatus.ts`). `/dashboard` is admin-only.
+2. After login via magic link, `requireProfile()` ([lib/requireProfile.ts](lib/requireProfile.ts)) redirects to `/profile/setup` if the user hasn't filled in their profile yet. After setup, redirects to `/tutorial`.
+3. Admin vs. rater role is determined by `rater_codes.is_admin` in Supabase (checked via admin client in `lib/getAdminStatus.ts`). `/dashboard` is admin-only; admins are redirected away from `/score`.
 
 ### Database Schema
 
@@ -58,6 +58,16 @@ Three distinct clients — use the correct one for each context:
 
 RLS on `scores` restricts each rater to their own rows. The dashboard and `/api/stats` route bypass RLS using the admin client and Postgres RPCs (`overall_stats()`, `item_stats()`) that are `SECURITY DEFINER` — they return only aggregated values, never individual rater rows.
 
+### Page Routing Summary
+
+- `/` (home): Raters see progress + resume link (auto-jumps to first incomplete item). Admins see a link to `/dashboard` only.
+- `/score?item=N`: Scoring UI — admins are redirected to `/dashboard`. Item id is clamped to 1–100.
+- `/dashboard`: Admin-only aggregate stats. Fetches all scores via admin client, computes Krippendorff alpha server-side.
+- `/dashboard/rater/[raterId]`: Admin drill-down showing a single rater's full score sheet (all 100 items with per-dimension scores and comments). Read-only.
+- `/tutorial`: Shown once after profile setup, before the rater starts scoring.
+
+Dashboard and API routes use `export const dynamic = "force-dynamic"` because they always need fresh data and cannot be statically rendered.
+
 ### Scoring Page (`/score`)
 
 The scoring page is a server component ([app/score/page.tsx](app/score/page.tsx)) that fetches the current item and the rater's existing scores, then passes them to `ScorePageClient` ([app/score/ScorePageClient.tsx](app/score/ScorePageClient.tsx)).
@@ -66,6 +76,7 @@ Key behaviors in `ScorePageClient`:
 - **Autosave**: 400 ms debounce on every score/comment change via `upsert`
 - **Keyboard shortcuts**: `1`–`5` to score the focused dimension (focus auto-advances), `Enter`/`→` to go to next item, `←` for previous
 - **Navigation guard**: blocks advancing if any dimension is unscored, or if any dimension ≤ 2 and `comment` is empty
+- **Modals**: SweetAlert2 (`Swal`) is used for all user-facing warnings and confirmations (not native `alert`/`confirm`)
 
 ### Stats (`lib/stats/krippendorff.ts`)
 
