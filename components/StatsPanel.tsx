@@ -59,16 +59,16 @@ export default function StatsPanel({ overall, alpha, raterSummary }: Props) {
   const numRaters = overall[0]?.num_raters ?? 0;
   const itemsComplete = overall[0]?.items_complete ?? 0;
 
-  // คำนวณ mean และ S.D. (sample, n−1) จากค่าเฉลี่ยของผู้ให้คะแนนแต่ละท่านต่อมิติ
+  // คำนวณ mean และ S.D. (sample, n−1) จากค่าเฉลี่ยของผู้ให้คะแนนที่มีข้อมูลแล้ว
+  // ต้องการอย่างน้อย 2 คนขึ้นไปจึงจะคำนวณ S.D. ได้
   const dimStats = DIMENSIONS.map((dim) => {
     const vals = raterSummary
       .map((r) => r[MEAN_KEY[dim]])
       .filter((v): v is number => v !== null);
-    const ready = raterSummary.length > 0 && vals.length === raterSummary.length;
-    if (!ready) return { dim, mean: null as number | null, sd: null as number | null };
+    if (vals.length < 2) return { dim, mean: null as number | null, sd: null as number | null, n: vals.length };
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const sd = sampleSD(vals);
-    return { dim, mean, sd };
+    return { dim, mean, sd, n: vals.length };
   });
 
   const allReady = dimStats.every((s) => s.mean !== null);
@@ -108,7 +108,7 @@ export default function StatsPanel({ overall, alpha, raterSummary }: Props) {
         <div className="px-4 py-3 border-b">
           <h3 className="font-semibold text-sm">ตารางสรุปคะแนน</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            คำนวณจากค่าเฉลี่ยของผู้ประเมินแต่ละท่าน ({raterSummary.length} ท่าน) · S.D. แบบ sample (หารด้วย n−1)
+            คำนวณจากค่าเฉลี่ยของผู้ประเมินที่มีข้อมูล · S.D. แบบ sample (หารด้วย n−1)
           </p>
         </div>
         <table className="w-full text-sm">
@@ -117,11 +117,12 @@ export default function StatsPanel({ overall, alpha, raterSummary }: Props) {
               <th className="px-4 py-2 text-left">มิติ</th>
               <th className="px-4 py-2 text-right">ค่าเฉลี่ย (x̄)</th>
               <th className="px-4 py-2 text-right">S.D.</th>
+              <th className="px-4 py-2 text-right">n</th>
               <th className="px-4 py-2 text-left">การแปลผล</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {dimStats.map(({ dim, mean, sd }) => {
+            {dimStats.map(({ dim, mean, sd, n }) => {
               const interp = mean !== null ? interpretMean(mean) : null;
               return (
                 <tr key={dim} className="hover:bg-gray-50">
@@ -136,6 +137,7 @@ export default function StatsPanel({ overall, alpha, raterSummary }: Props) {
                       <span className="text-gray-400 text-xs font-normal">รอข้อมูล</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-right text-gray-500 text-xs tabular-nums">{n}</td>
                   <td className="px-4 py-3">
                     {interp ? (
                       <span className={`text-xs font-medium ${interp.color}`}>{interp.text}</span>
@@ -154,6 +156,7 @@ export default function StatsPanel({ overall, alpha, raterSummary }: Props) {
                   <span className="text-gray-400 font-normal text-xs">รอข้อมูล</span>
                 )}
               </td>
+              <td className="px-4 py-3 text-right text-gray-400 font-normal">—</td>
               <td className="px-4 py-3 text-right text-gray-400 font-normal">—</td>
               <td className="px-4 py-3">
                 {overallMean !== null ? (
