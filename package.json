@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed": "tsx --env-file=.env.local supabase/seed.ts",
-    "create-raters": "tsx --env-file=.env.local supabase/create-raters.ts"
+    "create-raters": "tsx --env-file=.env.local supabase/create-raters.ts",
+    "seed-scores": "tsx --env-file=.env.local supabase/seed-scores.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

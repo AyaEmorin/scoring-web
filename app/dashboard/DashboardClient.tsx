@@ -45,6 +45,34 @@ interface Props {
 
 const SD_HIGH_THRESHOLD = 1.2;
 
+const MEAN_KEY: Record<Dimension, keyof Pick<RaterSummary, "mean_completeness" | "mean_correctness" | "mean_fluency">> = {
+  completeness: "mean_completeness",
+  correctness: "mean_correctness",
+  fluency: "mean_fluency",
+};
+
+function interpretMean(mean: number): string {
+  if (mean >= 4.21) return "ดีมาก";
+  if (mean >= 3.41) return "ดี";
+  if (mean >= 2.61) return "ปานกลาง";
+  if (mean >= 1.81) return "พอใช้";
+  return "ควรปรับปรุง";
+}
+
+function sampleSD(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+function alphaInterp(a: number | null): string {
+  if (a === null) return "ไม่มีข้อมูลเพียงพอ (ต้องการ ≥2 คน)";
+  if (a >= 0.8) return "ดีมาก — ความเห็นสอดคล้องกันสูง";
+  if (a >= 0.67) return "พอใช้ — ความเห็นสอดคล้องในระดับที่ยอมรับได้";
+  return "ต้องระวัง — ความเห็นไม่สอดคล้องกัน ควรทบทวน rubric";
+}
+
 type Tab = "raters" | "items" | "stats";
 
 export default function DashboardClient({ overall, perItem, alpha, raterSummary }: Props) {
@@ -70,6 +98,96 @@ export default function DashboardClient({ overall, perItem, alpha, raterSummary 
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "eval_stats.csv"; a.click();
   }, [rows]);
 
+  const exportAI = useCallback(() => {
+    // คำนวณ mean/SD จากค่าเฉลี่ยรายบุคคลต่อมิติ (sample SD, n−1)
+    const dimStats = DIMENSIONS.map((dim) => {
+      const vals = raterSummary.map((r) => r[MEAN_KEY[dim]]).filter((v): v is number => v !== null);
+      const mean = vals.length >= 2 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      const sd = vals.length >= 2 ? sampleSD(vals) : null;
+      return { dim, mean, sd, n: vals.length };
+    });
+    const dimMeans = dimStats.map((s) => s.mean).filter((v): v is number => v !== null);
+    const overallMean = dimMeans.length === DIMENSIONS.length
+      ? dimMeans.reduce((a, b) => a + b, 0) / dimMeans.length
+      : null;
+
+    const highSdItems = rows
+      .filter((r) => r.maxSd >= SD_HIGH_THRESHOLD)
+      .map(({ id, stats }) => ({
+        item_id: id,
+        ...Object.fromEntries(DIMENSIONS.flatMap((d) => [
+          [`${d}_mean`, stats[d]?.mean != null ? +Number(stats[d]!.mean).toFixed(2) : null],
+          [`${d}_sd`,   stats[d]?.stddev != null ? +Number(stats[d]!.stddev).toFixed(2) : null],
+        ])),
+      }));
+
+    const output = {
+      metadata: {
+        title: "ผลการประเมินคุณภาพคำตอบแชตบอตโดยผู้เชี่ยวชาญ (Human Evaluation)",
+        export_date: new Date().toISOString().slice(0, 10),
+        num_raters: raterSummary.length,
+        num_items: 100,
+        rating_scale: "1–5 (1=ควรปรับปรุง, 2=พอใช้, 3=ปานกลาง, 4=ดี, 5=ดีมาก)",
+        dimensions: DIMENSIONS.map((d) => ({ key: d, label: RUBRIC[d].label, description: RUBRIC[d].desc })),
+      },
+
+      summary: {
+        overall_mean: overallMean != null ? +overallMean.toFixed(2) : null,
+        overall_interpretation: overallMean != null ? interpretMean(overallMean) : null,
+        by_dimension: Object.fromEntries(dimStats.map(({ dim, mean, sd, n }) => [dim, {
+          label: RUBRIC[dim].label,
+          mean: mean != null ? +mean.toFixed(2) : null,
+          sd:   sd   != null ? +sd.toFixed(2)   : null,
+          n_raters_with_data: n,
+          interpretation: mean != null ? interpretMean(mean) : "รอข้อมูล",
+        }])),
+      },
+
+      inter_rater_reliability: {
+        method: "Krippendorff's Alpha (ordinal)",
+        interpretation_guide: "≥0.8 ดีมาก · 0.67–0.8 พอใช้ · <0.67 ต้องระวัง",
+        by_dimension: Object.fromEntries(DIMENSIONS.map((dim) => [dim, {
+          label: RUBRIC[dim].label,
+          alpha: alpha[dim] != null ? +alpha[dim]!.toFixed(3) : null,
+          interpretation: alphaInterp(alpha[dim]),
+        }])),
+      },
+
+      raters: raterSummary.map((r) => ({
+        name: r.name,
+        position: r.position,
+        items_completed: r.done,
+        completion_pct: +(r.done / 100 * 100).toFixed(1),
+        mean_completeness: r.mean_completeness != null ? +r.mean_completeness.toFixed(2) : null,
+        mean_correctness:  r.mean_correctness  != null ? +r.mean_correctness.toFixed(2)  : null,
+        mean_fluency:      r.mean_fluency       != null ? +r.mean_fluency.toFixed(2)       : null,
+      })),
+
+      items: rows.map(({ id, stats }) => ({
+        item_id: id,
+        ...Object.fromEntries(DIMENSIONS.flatMap((d) => [
+          [`${d}_mean`, stats[d]?.mean   != null ? +Number(stats[d]!.mean).toFixed(2)   : null],
+          [`${d}_sd`,   stats[d]?.stddev != null ? +Number(stats[d]!.stddev).toFixed(2) : null],
+          [`${d}_n`,    stats[d]?.n ?? null],
+        ])),
+      })),
+
+      high_disagreement_items: {
+        description: "ข้อที่ผู้ประเมินมีความเห็นไม่สอดคล้องกัน ควรทบทวน rubric หรือข้อคำถาม",
+        threshold: `SD ≥ ${SD_HIGH_THRESHOLD} ในอย่างน้อยหนึ่งมิติ`,
+        count: highSdItems.length,
+        items: highSdItems,
+      },
+    };
+
+    const json = JSON.stringify(output, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `eval_research_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  }, [rows, alpha, raterSummary]);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "raters", label: "ผู้ให้คะแนน" },
     { key: "items", label: "รายข้อ" },
@@ -84,7 +202,10 @@ export default function DashboardClient({ overall, perItem, alpha, raterSummary 
             <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← หน้าหลัก</Link>
             <h1 className="font-bold text-lg">Dashboard</h1>
           </div>
-          <button onClick={exportCSV} className="text-sm border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">Export CSV</button>
+          <div className="flex gap-2">
+            <button onClick={exportCSV} className="text-sm border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">Export CSV</button>
+            <button onClick={exportAI} className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">Export สำหรับ AI</button>
+          </div>
         </div>
         <div className="max-w-5xl mx-auto flex gap-1 mt-3">
           {tabs.map((t) => (
